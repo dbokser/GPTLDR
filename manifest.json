@@ -4,6 +4,9 @@
   "version": "1.0",
   "description": "Generate a TLDR summary of the selected text using OpenAI GPT",
   "permissions": ["contextMenus", "scripting", "storage", "tabs"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; worker-src 'self';"
+  },
   "host_permissions": ["<all_urls>"],
   "action": {
     "default_popup": "popup.html",

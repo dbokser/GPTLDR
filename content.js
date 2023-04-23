@@ -172,13 +172,58 @@ function splitText(text, maxTokens = 3000) {
   return chunks;
 }
 
-async function generateSummaries(apiKey, textChunks) {
+async function findMostSimilarSection(apiKey, query, contexts) {
+  const queryEmbedding = await fetchEmbeddingsFromBackground(apiKey, query);
+
+  function vectorSimilarity(x, y) {
+    let sum = 0;
+    for (let i = 0; i < x.length; i++) {
+      sum += x[i] * y[i];
+    }
+    return sum;
+  }
+
+  let maxSimilarity = -Infinity;
+  let mostSimilarSectionIndex;
+
+  for (const index in contexts) {
+    const similarity = vectorSimilarity(
+      queryEmbedding,
+      contexts[index].embedding
+    );
+    if (similarity > maxSimilarity) {
+      maxSimilarity = similarity;
+      mostSimilarSectionIndex = index;
+    }
+  }
+
+  const mostSimilarSection = contexts[mostSimilarSectionIndex];
+  const title = mostSimilarSection.title;
+  const heading = mostSimilarSection.heading;
+  const content = mostSimilarSection.content;
+
+  return { title, heading, content };
+}
+
+async function generateSummaries(apiKey, textChunks, ratePerMinute = 3) {
   const summaries = [];
-  for (const [index, chunk] of textChunks.entries()) {
+  // Calculate rate limiting delay based on the rate per minute
+  const rateLimitDelay = (60 * 1000) / ratePerMinute;
+
+  for (let i = 0; i < textChunks.length; i++) {
+    const chunk = textChunks[i];
     const summary = await fetchSummary(apiKey, chunk);
     summaries.push(summary);
-    updateProgressBar(index + 1);
+
+    // Update the progress bar
+    updateProgressBar(i + 1, textChunks.length);
+
+    // Sleep for the rate limit delay if there are more chunks left
+    if (i < textChunks.length - 1) {
+      await sleep(rateLimitDelay);
+    }
   }
+
   return summaries;
 }
 
