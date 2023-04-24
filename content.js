@@ -104,6 +104,9 @@ function showSummaryModal(summary, apiKey, messageHistory) {
       responseElement.innerHTML = "<span>.</span><span>.</span><span>.</span>";
       responsesContainer.appendChild(responseElement);
 
+      // remove the question from the input field
+      questionInput.value = "";
+
       // Animate the "..." while waiting for the response
       let dots = 1;
       const animateDots = setInterval(() => {
@@ -205,24 +208,31 @@ async function findMostSimilarSection(apiKey, query, contexts) {
   return { title, heading, content };
 }
 
-async function generateSummaries(apiKey, textChunks, ratePerMinute = 3) {
-  const summaries = [];
-  // Calculate rate limiting delay based on the rate per minute
-  const rateLimitDelay = (60 * 1000) / ratePerMinute;
+async function generateSummaries(apiKey, textChunks, batch = false) {
+  let summaries = [];
 
-  for (let i = 0; i < textChunks.length; i++) {
-    const chunk = textChunks[i];
-    const summary = await fetchSummary(apiKey, chunk);
-    summaries.push(summary);
+  if (batch) {
+    // Fetch summaries in a single batch request
+    summaries = await fetchSummaries(apiKey, textChunks);
 
-    // Update the progress bar
-    updateProgressBar(i + 1, textChunks.length);
-
-    // Sleep for the rate limit delay if there are more chunks left
-    if (i < textChunks.length - 1) {
-      await sleep(rateLimitDelay);
+    // Update the progress bar for each summary
+    summaries.forEach((_, i) => {
+      updateProgressBar(i + 1, textChunks.length);
+    });
+  } else {
+    // Fetch summaries one at a time
+    for (const [index, chunk] of textChunks.entries()) {
+      const summary = await fetchSummary(apiKey, chunk);
+      summaries.push(summary);
+      updateProgressBar(index + 1, textChunks.length);
     }
   }
+
+  // display the text chunks along with their summaries in the console
+  textChunks.forEach((chunk, i) => {
+    console.log("Text chunk:", chunk);
+    console.log("Summary:", summaries[i]);
+  });
 
   return summaries;
 }

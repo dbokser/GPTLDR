@@ -36,6 +36,41 @@ async function retryWithExponentialBackoff(
   }
 }
 
+// Fetch a list of multiple summaries from regular completion endpoint using batching
+async function fetchSummaries(apiKey, textChunks) {
+  const promptArray = textChunks.map(
+    (text) => `Summarize the text below:\n\n${text}`
+  );
+
+  const fetchSummariesRequest = async () => {
+    const response = await fetch("https://api.openai.com/v1/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "text-curie-001",
+        prompt: promptArray,
+        max_tokens: 500,
+        n: 1,
+        temperature: 0.5,
+      }),
+    });
+
+    if (!response.ok) {
+      throw response;
+    }
+
+    const data = await response.json();
+    const summaries = data.choices.map((choice) => choice.text.trim());
+    return summaries;
+  };
+
+  return retryWithExponentialBackoff(fetchSummariesRequest);
+}
+
+// Fetch a single summary from chat completion endpoint
 async function fetchSummary(apiKey, text) {
   const fetchSummaryRequest = async () => {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -49,7 +84,7 @@ async function fetchSummary(apiKey, text) {
         messages: [
           {
             role: "user",
-            content: `Please provide a TLDR of the following text. Keep it super short and barebones, removing any extraneous information. Write in abbreviated style, no extra words:\n\n${text}`,
+            content: `Summarize the text below:\n\n${text}`,
           },
         ],
         max_tokens: 500,
@@ -72,25 +107,33 @@ async function fetchSummary(apiKey, text) {
 }
 
 async function fetchSummaryWithMessageHistory(apiKey, messageHistory) {
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-3.5-turbo",
-      messages: messageHistory,
-      max_tokens: 500,
-      n: 1,
-      temperature: 0.5,
-    }),
-  });
+  const fetchSummaryRequest = async () => {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: messageHistory,
+        max_tokens: 500,
+        n: 1,
+        temperature: 0.5,
+      }),
+    });
 
-  const data = await response.json();
-  return data.choices && data.choices.length > 0
-    ? data.choices[0].message.content.trim()
-    : "No response generated.";
+    if (!response.ok) {
+      throw response;
+    }
+
+    const data = await response.json();
+    return data.choices && data.choices.length > 0
+      ? data.choices[0].message.content.trim()
+      : "No response generated.";
+  };
+
+  return retryWithExponentialBackoff(fetchSummaryRequest);
 }
 
 async function fetchEmbeddings(apiKey, text) {
