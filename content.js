@@ -53,19 +53,38 @@ function showSummaryModal(summary, apiKey, messageHistory) {
   modal.style.fontSize = "12px";
   modal.style.color = "black";
 
+  // Check if summary is "No summary generated"
+  const noSummary = summary === "No summary generated";
+
   // Add a response container, input field, and submit button for user questions
   modal.innerHTML = `
-    <h2>TLDR Summary</h2>
-    <div id="tldrResponses" style="max-height: 400px; overflow-y: scroll; padding-bottom: 10px;">
-      <div class="assistant-message" style="background-color: #e0f7fa; padding: 8px; border-radius: 12px; margin-bottom: 8px;">${summary}</div>
-    </div>
-    <div style="display: flex;">
-      <label for="tldrQuestion">Ask a question:</label>
-      <input id="tldrQuestion" type="text" placeholder="Enter your question..." style="flex-grow: 1; margin-left: 10px;"/>
-      <button id="tldrSubmitQuestion" style="margin-left: 10px;">Submit</button>
-    </div>
-    <button id="tldrCloseButton" style="display: block; margin: 10px auto;">Close</button>
-  `;
+  <h2>TLDR Summary</h2>
+  <div id="tldrResponses" style="max-height: 400px; overflow-y: scroll; padding-bottom: 10px;">
+    <div class="assistant-message" style="background-color: #e0f7fa; padding: 8px; border-radius: 12px; margin-bottom: 8px;">${summary}${
+    noSummary ? ' <a href="#" id="tldrHelpLink">(?)</a>' : ""
+  }</div>
+    ${
+      noSummary
+        ? `<div id="tldrHelpMessage" style="background-color: #f0f0f0; padding: 8px; border-radius: 12px; margin-bottom: 8px; display: none;">
+            <p>I'm sorry, something seems to have gone wrong with the app. We apologize for any inconvenience this may have caused.</p>
+            <p>To help resolve the issue, please follow these instructions:</p>
+            <ol>
+              <li>Open the console log with Ctrl + i and look for any errors. This may give you some insight into what went wrong.</li>
+              <li>If you don't find any solutions in the console log, please go to our GitHub issue page at <a href='https://github.com/dbokser/GPTLDR/issues'>github.com/dbokser/GPTLDR/issues</a>.</li>
+              <li>If you don't see your specific error listed, please create a new issue and describe the problem in as much detail as possible. Our team will review it as soon as possible and work on finding a solution.</li>
+            </ol>
+            <p>Thank you for your patience and understanding as we work to resolve any issues with our app.</p>
+          </div>`
+        : ""
+    }
+  </div>
+  <div style="display: flex;">
+    <label for="tldrQuestion">Ask a question:</label>
+    <input id="tldrQuestion" type="text" placeholder="Enter your question..." style="flex-grow: 1; margin-left: 10px;"/>
+    <button id="tldrSubmitQuestion" style="margin-left: 10px;">Submit</button>
+  </div>
+  <button id="tldrCloseButton" style="display: block; margin: 10px auto;">Close</button>
+`;
 
   document.body.appendChild(modal);
 
@@ -143,6 +162,16 @@ function showSummaryModal(summary, apiKey, messageHistory) {
       submitQuestionButton.click();
     }
   });
+
+  if (noSummary) {
+    const helpLink = document.getElementById("tldrHelpLink");
+    const helpMessage = document.getElementById("tldrHelpMessage");
+
+    helpLink.addEventListener("click", (event) => {
+      event.preventDefault();
+      helpMessage.style.display = "block";
+    });
+  }
 }
 
 function getSelectedText() {
@@ -262,43 +291,67 @@ if (!window.contentScriptLoaded) {
 
           // Retrieve the API key from storage
           chrome.storage.sync.get("apiKey", async (data) => {
-            if (data.apiKey) {
-              const apiKey = data.apiKey;
-              const summaries = await generateSummaries(apiKey, textChunks);
-              const combinedSummaries = summaries.join(" ");
-              const finalSummary = await fetchSummary(
-                apiKey,
-                combinedSummaries
-              );
+            try {
+              if (data.apiKey) {
+                const apiKey = data.apiKey;
+                const summaries = await generateSummaries(apiKey, textChunks);
+                const combinedSummaries = summaries.join(" ");
+                const finalSummary = await fetchSummary(
+                  apiKey,
+                  combinedSummaries
+                );
 
+                // Hide the loading modal
+                hideModal();
+
+                // Initialize the message history
+                const messageHistory = [
+                  {
+                    role: "user",
+                    content: `Please provide a TLDR of the following text. Keep it super short and barebones, removing any extraneous information. Write in abbreviated style, no extra words:`,
+                  },
+                  ...summaries.map((summary) => ({
+                    role: "user",
+                    content: summary,
+                  })),
+                  {
+                    role: "assistant",
+                    content: finalSummary,
+                  },
+                ];
+
+                // Show the summary modal with the message history
+                showSummaryModal(finalSummary, apiKey, messageHistory);
+              } else {
+                // Hide the loading modal
+                hideModal();
+
+                alert(
+                  "Please set your OpenAI API key in the extension options."
+                );
+              }
+            } catch (error) {
+              //console.error(error);
+              //alert("Something went wrong.");
               // Hide the loading modal
               hideModal();
 
-              // Initialize the message history
               const messageHistory = [
                 {
-                  role: "user",
-                  content: `Please provide a TLDR of the following text. Keep it super short and barebones, removing any extraneous information. Write in abbreviated style, no extra words:`,
-                },
-                ...summaries.map((summary) => ({
-                  role: "user",
-                  content: summary,
-                })),
-                {
                   role: "assistant",
-                  content: finalSummary,
+                  content: "No summary generated",
                 },
               ];
-
               // Show the summary modal with the message history
-              showSummaryModal(finalSummary, apiKey, messageHistory);
-            } else {
-              // Hide the loading modal
-              hideModal();
-
-              alert("Please set your OpenAI API key in the extension options.");
+              showSummaryModal(
+                "No summary generated",
+                data.apiKey,
+                messageHistory
+              );
             }
           });
+        } else {
+          alert("Please select some text to summarize.");
         }
       }
     }
