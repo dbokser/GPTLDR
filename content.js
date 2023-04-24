@@ -53,30 +53,32 @@ function showSummaryModal(summary, apiKey, messageHistory) {
   modal.style.fontSize = "12px";
   modal.style.color = "black";
 
-  // Check if summary is "No summary generated"
-  const noSummary = summary === "No summary generated";
+  // Check if summary contains "No summary generated"
+  const noSummary = /No summary generated/.test(summary);
+
+  // Generate unique ids for the links and add them to an array
+  let linkIds = [];
+  const replacedSummary = summary.replace(/No summary generated/g, (match) => {
+    const uniqueId = `tldrHelpLink-${linkIds.length}`;
+    linkIds.push(uniqueId);
+    return `${match} <a href="#" class="tldrHelpLink" id="${uniqueId}">(?)</a>`;
+  });
 
   // Add a response container, input field, and submit button for user questions
   modal.innerHTML = `
   <h2>TLDR Summary</h2>
   <div id="tldrResponses" style="max-height: 400px; overflow-y: scroll; padding-bottom: 10px;">
-    <div class="assistant-message" style="background-color: #e0f7fa; padding: 8px; border-radius: 12px; margin-bottom: 8px;">${summary}${
-    noSummary ? ' <a href="#" id="tldrHelpLink">(?)</a>' : ""
-  }</div>
-    ${
-      noSummary
-        ? `<div id="tldrHelpMessage" style="background-color: #f0f0f0; padding: 8px; border-radius: 12px; margin-bottom: 8px; display: none;">
-            <p>I'm sorry, something seems to have gone wrong with the app. We apologize for any inconvenience this may have caused.</p>
-            <p>To help resolve the issue, please follow these instructions:</p>
-            <ol>
-              <li>Open the console log with Ctrl + i and look for any errors. This may give you some insight into what went wrong.</li>
-              <li>If you don't find any solutions in the console log, please go to our GitHub issue page at <a href='https://github.com/dbokser/GPTLDR/issues'>github.com/dbokser/GPTLDR/issues</a>.</li>
-              <li>If you don't see your specific error listed, please create a new issue and describe the problem in as much detail as possible. Our team will review it as soon as possible and work on finding a solution.</li>
-            </ol>
-            <p>Thank you for your patience and understanding as we work to resolve any issues with our app.</p>
-          </div>`
-        : ""
-    }
+    <div class="assistant-message" style="background-color: #e0f7fa; padding: 8px; border-radius: 12px; margin-bottom: 8px;">${replacedSummary}</div>
+    <div id="tldrHelpMessage" style="background-color: #f0f0f0; padding: 8px; border-radius: 12px; margin-bottom: 8px; display: none;">
+      <p>I'm sorry, something went wrong.</p>
+      <p>To help resolve the issue, please follow these instructions:</p>
+      <ol>
+        <li>Open the console log with Ctrl + i and look for any errors. This may give you some insight into what went wrong.</li>
+        <li>If you don't find any solutions in the console log, please go to our GitHub issue page at <a href='https://github.com/dbokser/GPTLDR/issues'>github.com/dbokser/GPTLDR/issues</a>.</li>
+        <li>If you don't see your specific error listed, please create a new issue and describe the problem in as much detail as possible. Our team will review it as soon as possible and work on finding a solution.</li>
+      </ol>
+      <p>Thank you for your patience and understanding as we work to resolve any issues with our app.</p>
+    </div>
   </div>
   <div style="display: flex;">
     <label for="tldrQuestion">Ask a question:</label>
@@ -84,7 +86,7 @@ function showSummaryModal(summary, apiKey, messageHistory) {
     <button id="tldrSubmitQuestion" style="margin-left: 10px;">Submit</button>
   </div>
   <button id="tldrCloseButton" style="display: block; margin: 10px auto;">Close</button>
-`;
+  `;
 
   document.body.appendChild(modal);
 
@@ -163,13 +165,16 @@ function showSummaryModal(summary, apiKey, messageHistory) {
     }
   });
 
+  // Add event listeners to all new links if noSummary is true
   if (noSummary) {
-    const helpLink = document.getElementById("tldrHelpLink");
-    const helpMessage = document.getElementById("tldrHelpMessage");
+    linkIds.forEach((linkId) => {
+      const helpLink = document.getElementById(linkId);
+      const helpMessage = document.getElementById("tldrHelpMessage");
 
-    helpLink.addEventListener("click", (event) => {
-      event.preventDefault();
-      helpMessage.style.display = "block";
+      helpLink.addEventListener("click", (event) => {
+        event.preventDefault();
+        helpMessage.style.display = "block";
+      });
     });
   }
 }
@@ -249,15 +254,18 @@ async function generateSummaries(apiKey, textChunks, batch = false) {
       updateProgressBar(i + 1, textChunks.length);
     });
   } else {
-    // Fetch summaries one at a time
-    for (const [index, chunk] of textChunks.entries()) {
-      const summary = await fetchSummary(apiKey, chunk);
-      summaries.push(summary);
-      updateProgressBar(index + 1, textChunks.length);
-    }
+    // Fetch summaries concurrently
+    const summaryPromises = textChunks.map((chunk, index) => {
+      return fetchSummary(apiKey, chunk).then((summary) => {
+        updateProgressBar(index + 1, textChunks.length);
+        return summary;
+      });
+    });
+
+    summaries = await Promise.all(summaryPromises);
   }
 
-  // display the text chunks along with their summaries in the console
+  // Display the text chunks along with their summaries in the console
   textChunks.forEach((chunk, i) => {
     console.log("Text chunk:", chunk);
     console.log("Summary:", summaries[i]);
@@ -336,18 +344,16 @@ if (!window.contentScriptLoaded) {
               // Hide the loading modal
               hideModal();
 
+              const errMsg =
+                "No summary generated. Make sure your API key is correct, and that you have enough credits left for API calls.";
               const messageHistory = [
                 {
                   role: "assistant",
-                  content: "No summary generated",
+                  content: errMsg,
                 },
               ];
               // Show the summary modal with the message history
-              showSummaryModal(
-                "No summary generated",
-                data.apiKey,
-                messageHistory
-              );
+              showSummaryModal(errMsg, data.apiKey, messageHistory);
             }
           });
         } else {

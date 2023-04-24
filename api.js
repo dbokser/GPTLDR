@@ -6,7 +6,7 @@ function sleep(ms) {
 // Retry function with exponential backoff
 async function retryWithExponentialBackoff(
   func,
-  maxRetries = 10,
+  maxRetries = 15,
   initialDelay = 1000,
   exponentialBase = 2,
   jitter = true
@@ -28,6 +28,8 @@ async function retryWithExponentialBackoff(
         }
 
         delay *= exponentialBase * (1 + (jitter ? Math.random() : 0));
+        console.log("Current delay:", delay);
+
         await sleep(delay);
       } else {
         throw error;
@@ -72,7 +74,9 @@ async function fetchSummaries(apiKey, textChunks) {
 
 // Fetch a single summary from chat completion endpoint
 async function fetchSummary(apiKey, text) {
+  console.log("Fetching summary...\n\n" + text.slice(0, 20) + "...");
   const fetchSummaryRequest = async () => {
+    const startTime = Date.now();
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -98,6 +102,10 @@ async function fetchSummary(apiKey, text) {
     }
 
     const data = await response.json();
+
+    const timeDif = Date.now() - startTime;
+    console.log("Summary fetched in ", timeDif, "ms");
+
     return data.choices && data.choices.length > 0
       ? data.choices[0].message.content.trim()
       : "No summary generated.";
